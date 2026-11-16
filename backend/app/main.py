@@ -5,14 +5,26 @@
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import ROUTERS
+from app.services.standardmapping import standard_mapping_service
 from app.store import store
 
-app = FastAPI(title="实时指标计算与监控大盘平台", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """启动即把维度映射落成标准结果与版本，下钻生成快照时才有唯一口径可绑。"""
+    standard_mapping_service.sync_all()
+    yield
+
+
+app = FastAPI(title="实时指标计算与监控大盘平台", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

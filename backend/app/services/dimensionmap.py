@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.standardmapping import ACTIVE_RULE_STATUS, standard_mapping_service
 from app.store import store
 
 MODULE = "dimensionmap"
@@ -44,6 +45,8 @@ class DimensionmapService:
         entry["pending"] = True
         entry["abnormal"] = False
         rows.append(entry)
+        # 落库点：登记即同步标准结果，草稿规则参与引用关系但不改当前口径。
+        standard_mapping_service.sync_all()
         return entry, []
 
     def run_action(self, entry_id: int, action: str) -> tuple[dict[str, Any] | None, str]:
@@ -58,4 +61,25 @@ class DimensionmapService:
         entry["status"] = target
         entry["pending"] = target != STATUS_ORDER[-1]
         entry["abnormal"] = action in NEGATIVE_ACTIONS
-        return entry, f"映射规则已{action}"
+        # 落库点：口径变更（生效 / 废弃 / 提交评审）后重建标准结果与版本。
+        summary = standard_mapping_service.sync_all()
+        note = self._conflict_note(entry, target, summary)
+        return entry, f"映射规则已{action}{note}"
+
+    @staticmethod
+    def _conflict_note(entry: dict[str, Any], target: str, summary: dict[str, Any]) -> str:
+        """生效动作落在冲突维度上时，把这次权衡结论回给调用方，而不是静默覆盖。"""
+        if target != ACTIVE_RULE_STATUS:
+            return ""
+        source = str(entry.get("原始维度名") or "")
+        for conflict in summary.get("冲突", []):
+            if conflict.get("源维度") != source:
+                continue
+            adopted = conflict.get("采用") or {}
+            if adopted.get("规则ID") == entry.get("id"):
+                return f"；当前口径采用本规则（标准维度 {adopted.get('标准维度')}）"
+            return (
+                f"；同源维度存在更高优先口径，本次未采用本规则，"
+                f"当前口径仍为 {adopted.get('规则编号')}（标准维度 {adopted.get('标准维度')}）"
+            )
+        return ""

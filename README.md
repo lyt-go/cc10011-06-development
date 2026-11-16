@@ -68,6 +68,32 @@ npm run dev
 | 维度映射 | `dimensionmap` | 映射规则 | 规则编号、原始维度名、标准维度名 |
 | 数据质量分 | `qualityscore` | 评分规则 | 规则编号、数据集名称、完整性权重 |
 
+## 多维下钻路径版本快照
+
+多维下钻除路径配置外，还落一张「下钻路径版本快照」，用来固定每一层结果的口径边界：
+
+- `POST /api/drilldown/{id}/snapshots`：校验上游并生成快照。上游（路径未启用、层级序列与起始维度
+  不一致、路径深度不符、维度缺已生效标准映射、度量字段不存在）未完成时直接拒绝生成；多个提交同时
+  到达时只接纳首个通过校验的处理顺序，重复提交合并到已受理快照，台账记录每个提交的顺序。
+- `GET /api/drilldown/{id}/precheck`：生成前检查上游与逐层维度绑定。
+- `GET /api/drilldown/snapshots`：快照列表，可按 `start_dimension` 过滤。
+- `GET /api/drilldown/snapshots/{id}/layers`：分层聚合明细，支持 `start_dimension` 筛选、
+  `level` / `locate` 定位层级、`sort_field` / `sort_order` 层内排序。
+- `GET /api/drilldown/snapshots/{id}/check`：核对快照绑定版本与当前标准口径，识别口径漂移。
+- `GET /api/drilldown/{id}/cache`：明细下钻缓存结果，口径漂移时仍按旧维度展示并给出提示。
+- `GET /api/drilldown/ledger`：快照生成提交台账（受理顺序、拒绝原因）。
+
+标准维度映射的落库点：
+
+- `dimensionmap` 的登记 / 评审 / 生效 / 废弃 → `dimensionmap_standard`（当前口径）
+  + `dimensionmap_version`（口径变化追加一版，含冲突权衡说明）。
+- `realtimemetric`、`comparison`、`filterpreset`、`eventanalysis`、`segmentprofile`、`drilldown`
+  的登记与状态流转 → 同步刷新标准结果的「覆盖模块 / 引用字段」，口径未变不追加版本。
+- 同一源维度存在多条已生效映射时，按 映射优先级 > 最近更新时间 > 登记顺序 选一条，
+  被替换规则、权衡代价写进版本记录；快照每一层只绑定一个标准维度版本。
+- 查询入口：`GET /api/dimensionmap/standards`、`GET /api/dimensionmap/versions`、
+  `POST /api/dimensionmap/sync`。
+
 ## 约定
 
 - 每个模块的前端页面在 `frontend/src/views/<模块>/index.vue`，后端接口在

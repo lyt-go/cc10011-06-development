@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.standardmapping import standard_mapping_service
 from app.store import store
 
 MODULE = "comparison"
@@ -44,6 +45,8 @@ class ComparisonService:
         entry["pending"] = True
         entry["abnormal"] = False
         rows.append(entry)
+        # 落库点：维度映射同步写入标准维度映射结果（只刷新引用关系）。
+        standard_mapping_service.sync_module(MODULE)
         return entry, []
 
     def run_action(self, entry_id: int, action: str) -> tuple[dict[str, Any] | None, str]:
@@ -58,4 +61,6 @@ class ComparisonService:
         entry["status"] = target
         entry["pending"] = target != STATUS_ORDER[-1]
         entry["abnormal"] = action in NEGATIVE_ACTIONS
+        # 落库点：状态流转后同步维度引用关系。
+        standard_mapping_service.sync_module(MODULE)
         return entry, f"对比配置已{action}"
